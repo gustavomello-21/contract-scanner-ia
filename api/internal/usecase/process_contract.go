@@ -4,6 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
+	"math"
+	"os"
+	"path/filepath"
+	"slices"
+	"strings"
 	"time"
 
 	"contract-scanner/internal/usecase/providers"
@@ -83,15 +89,52 @@ func (uc *ProcessContract) Execute(ctx context.Context, input ProcessInput) (*Pr
 	}
 
 	// 6. Extrai texto do PDF
-	text, err := uc.PDFExtractor.Extract(tmpPath)
+	extractResult, err := uc.PDFExtractor.Extract(ctx, tmpPath)
 	if err != nil {
 		return nil, fmt.Errorf("error extracting text: %w", err)
 	}
-	fmt.Printf(text)
+	text := extractResult.Text
+	if strings.TrimSpace(text) == "" {
+		return nil, fmt.Errorf("unable to extract readable contract text")
+	}
+
+	workDir, err := os.Getwd()
+	if err != nil {
+		return nil, fmt.Errorf("error getting workdir: %w", err)
+	}
+
+	tmpDir := filepath.Join(workDir, "tmp")
+	if err := os.MkdirAll(tmpDir, 0o755); err != nil {
+		return nil, fmt.Errorf("error creating tmp dir: %w", err)
+	}
+
+	tmpTextFilename := buildTempTextFilename(analyse.ID.String(), analyse.Filename)
+	tmpTextPath := filepath.Join(tmpDir, tmpTextFilename)
+
+	if err := os.WriteFile(tmpTextPath, []byte(text), 0o644); err != nil {
+		return nil, fmt.Errorf("error writing extracted text to temporary file: %w", err)
+	}
+
+	log.Printf(
+		"texto extraido salvo temporariamente em: %s (source=%s quality=%.2f warnings=%v)",
+		tmpTextPath,
+		extractResult.Source,
+		extractResult.QualityScore,
+		extractResult.Warnings,
+	)
+
 	// 7. Chama LLM
 	resultJSON, err := uc.LLMProvider.AnalyzeContract(ctx, text)
 	if err != nil {
+		analyse.Status = "FAILED"
+		if err := uc.AnalyseRepo.Update(analyse); err != nil {
+			return nil, fmt.Errorf("error updating status: %w", err)
+		}
 		return nil, fmt.Errorf("error analyzing contract: %w", err)
+	}
+	resultJSON, err = enrichAnalysisResult(resultJSON, extractResult)
+	if err != nil {
+		return nil, fmt.Errorf("error enriching analysis result: %w", err)
 	}
 
 	// 8. Salva resultado e status = COMPLETED
@@ -109,4 +152,91 @@ func (uc *ProcessContract) Execute(ctx context.Context, input ProcessInput) (*Pr
 		Status:     analyse.Status,
 		Result:     resultJSON,
 	}, nil
+}
+
+func buildTempTextFilename(fallbackID string, originalFilename *string) string {
+	if originalFilename == nil || strings.TrimSpace(*originalFilename) == "" {
+		return fmt.Sprintf("%s.txt", fallbackID)
+	}
+
+	base := filepath.Base(strings.TrimSpace(*originalFilename))
+	name := strings.TrimSuffix(base, filepath.Ext(base))
+	name = strings.Map(func(r rune) rune {
+		switch {
+		case r >= 'a' && r <= 'z':
+			return r
+		case r >= 'A' && r <= 'Z':
+			return r
+		case r >= '0' && r <= '9':
+			return r
+		case r == '-', r == '_':
+			return r
+		default:
+			return '_'
+		}
+	}, name)
+	name = strings.Trim(name, "_")
+	if name == "" {
+		name = fallbackID
+	}
+
+	return fmt.Sprintf("%s.txt", name)
+}
+
+func enrichAnalysisResult(raw json.RawMessage, extractResult *providers.ExtractResult) (json.RawMessage, error) {
+	payload := map[string]any{}
+	if err := json.Unmarshal(raw, &payload); err != nil {
+		return nil, fmt.Errorf("invalid result json: %w", err)
+	}
+
+	warnings := []string{}
+	if current, ok := payload["analysis_warnings"]; ok {
+		switch values := current.(type) {
+		case []any:
+			for _, value := range values {
+				if warning, ok := value.(string); ok {
+					trimmed := strings.TrimSpace(warning)
+					if trimmed != "" && !slices.Contains(warnings, trimmed) {
+						warnings = append(warnings, trimmed)
+					}
+				}
+			}
+		case []string:
+			for _, warning := range values {
+				trimmed := strings.TrimSpace(warning)
+				if trimmed != "" && !slices.Contains(warnings, trimmed) {
+					warnings = append(warnings, trimmed)
+				}
+			}
+		}
+	}
+
+	for _, warning := range extractResult.Warnings {
+		trimmed := strings.TrimSpace(warning)
+		if trimmed != "" && !slices.Contains(warnings, trimmed) {
+			warnings = append(warnings, trimmed)
+		}
+	}
+	if extractResult.QualityScore < 0.35 && !slices.Contains(warnings, "text extraction quality is low; analysis may be partial") {
+		warnings = append(warnings, "text extraction quality is low; analysis may be partial")
+	}
+	if len(warnings) > 0 {
+		payload["analysis_warnings"] = warnings
+	}
+
+	if _, exists := payload["confidence"]; !exists {
+		payload["confidence"] = math.Round(extractResult.QualityScore*100) / 100
+	}
+
+	if _, exists := payload["missing_information"]; !exists && extractResult.QualityScore < 0.35 {
+		payload["missing_information"] = []string{
+			"O texto extraído possui baixa qualidade e pode omitir cláusulas relevantes.",
+		}
+	}
+
+	out, err := json.Marshal(payload)
+	if err != nil {
+		return nil, err
+	}
+	return json.RawMessage(out), nil
 }
