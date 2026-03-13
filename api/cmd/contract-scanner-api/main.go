@@ -57,7 +57,12 @@ func main() {
 	analyseRepo := repository.NewAnalyseRepo(db)
 
 	pdfExtractor := pdf.NewPdfCpuExtractor()
-	openaiClient := llm.NewOpenAIClient(os.Getenv("OPEN_AI_API_KEY"), systemPrompt)
+	openaiClient := llm.NewOpenAIClient(llm.ClientConfig{
+		APIKey:       os.Getenv("LLM_API_KEY"),
+		BaseURL:      os.Getenv("LLM_BASE_URL"),
+		Model:        os.Getenv("LLM_MODEL"),
+		SystemPrompt: systemPrompt,
+	})
 
 	generatePresignedUrl := usecase.NewGeneratePresignedUrl(analyseRepo, s3Client)
 	processContract := usecase.NewProcessContract(analyseRepo, s3Client, pdfExtractor, openaiClient)
