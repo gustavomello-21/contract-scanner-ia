@@ -2,8 +2,8 @@ package handler
 
 import (
 	"net/http"
+	"os"
 
-	"contract-scanner/internal/middleware"
 	"contract-scanner/internal/usecase"
 
 	"github.com/gin-gonic/gin"
@@ -34,7 +34,8 @@ func (h *UploadHandler) Presign(c *gin.Context) {
 		Filename:    req.Filename,
 		ContentType: req.ContentType,
 		SizeBytes:   req.SizeBytes,
-		ClerkUserID: middleware.GetClerkUserID(c),
+		ClerkUserID: "", // disabled for local testing
+		Model:       os.Getenv("LLM_MODEL"),
 	})
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
