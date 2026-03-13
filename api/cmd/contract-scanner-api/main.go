@@ -1,6 +1,7 @@
 package main
 
 import (
+	_ "embed"
 	"log"
 	"os"
 
@@ -13,16 +14,18 @@ import (
 	"contract-scanner/internal/infra/storage"
 	"contract-scanner/internal/usecase"
 
-	"github.com/clerk/clerk-sdk-go/v2"
 	"github.com/joho/godotenv"
 )
+
+//go:embed prompt.md
+var systemPrompt string
 
 func main() {
 	_ = godotenv.Load()
 	_ = godotenv.Load("../.env")
 	_ = godotenv.Load("../../../.env")
 
-	clerk.SetKey(os.Getenv("CLERK_SECRET_KEY"))
+	// clerk.SetKey(os.Getenv("CLERK_SECRET_KEY")) // disabled for local testing
 
 	dbClient := postgres.NewClient(postgres.DatabaseConfig{
 		Host:     os.Getenv("DB_HOST"),
@@ -54,7 +57,7 @@ func main() {
 	analyseRepo := repository.NewAnalyseRepo(db)
 
 	pdfExtractor := pdf.NewPdfCpuExtractor()
-	openaiClient := llm.NewOpenAIClient(os.Getenv("OPEN_AI_API_KEY"))
+	openaiClient := llm.NewOpenAIClient(os.Getenv("OPEN_AI_API_KEY"), systemPrompt)
 
 	generatePresignedUrl := usecase.NewGeneratePresignedUrl(analyseRepo, s3Client)
 	processContract := usecase.NewProcessContract(analyseRepo, s3Client, pdfExtractor, openaiClient)
