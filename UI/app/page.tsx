@@ -1,7 +1,6 @@
 "use client"
 
 import { useState, useCallback } from "react"
-import { useAuth } from "@clerk/nextjs"
 import { toast } from "sonner"
 import { Navbar } from "@/components/navbar"
 import { UploadArea } from "@/components/upload-area"
@@ -19,7 +18,6 @@ const stepLabels: Record<AnalysisStep, string> = {
 }
 
 export default function HomePage() {
-  const { getToken } = useAuth()
   const [file, setFile] = useState<File | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [isAnalyzing, setIsAnalyzing] = useState(false)
@@ -34,10 +32,7 @@ export default function HomePage() {
     setResult(null)
 
     try {
-      const token = await getToken()
-      if (!token) throw new Error("Sessão expirada. Faça login novamente.")
-
-      const data = await analyzeContract(file, token, setStep)
+      const data = await analyzeContract(file, setStep)
       setResult(data)
       toast.success("Contrato analisado com sucesso!")
     } catch (err) {
@@ -48,7 +43,7 @@ export default function HomePage() {
       setIsAnalyzing(false)
       setStep(null)
     }
-  }, [file, getToken])
+  }, [file])
 
   const handleFileSelect = useCallback((f: File | null) => {
     setFile(f)
