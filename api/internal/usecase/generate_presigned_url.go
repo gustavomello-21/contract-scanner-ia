@@ -21,6 +21,7 @@ type PresignInput struct {
 	ContentType string
 	SizeBytes   int64
 	ClerkUserID string
+	Model       string
 }
 
 type Output struct {
@@ -54,6 +55,7 @@ func (uc *GeneratePresignedUrl) Execute(ctx context.Context, input PresignInput)
 		ContentType: &input.ContentType,
 		SizeBytes:   &input.SizeBytes,
 		S3Key:       s3Key,
+		Model:       input.Model,
 		CreatedAt:   time.Now(),
 		UpdatedAt:   time.Now(),
 	}

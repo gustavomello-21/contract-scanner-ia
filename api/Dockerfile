@@ -10,7 +10,11 @@ RUN CGO_ENABLED=0 go build -o server ./cmd/contract-scanner-api
 
 FROM alpine:3.21
 
-RUN apk add --no-cache ca-certificates
+RUN apk add --no-cache \
+    ca-certificates \
+    poppler-utils \
+    tesseract-ocr \
+    tesseract-ocr-data-por
 WORKDIR /app
 COPY --from=builder /app/server .
 

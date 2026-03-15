@@ -15,6 +15,10 @@ import {
   Users,
   ShieldAlert,
   Lightbulb,
+  CheckSquare,
+  DollarSign,
+  Clock,
+  AlertCircle,
 } from "lucide-react"
 import type { AnalysisResult, RiskLevel } from "@/lib/api"
 
@@ -35,6 +39,20 @@ function RiskBadge({ level }: { level: RiskLevel }) {
     <Badge variant={config.variant} className={config.className}>
       {config.label}
     </Badge>
+  )
+}
+
+function SectionCard({ icon, title, children }: { icon: React.ReactNode; title: string; children: React.ReactNode }) {
+  return (
+    <Card className="border-border bg-card">
+      <CardHeader className="flex flex-row items-center gap-3 pb-3">
+        <div className="flex h-8 w-8 items-center justify-center rounded-md bg-secondary">
+          {icon}
+        </div>
+        <h3 className="text-sm font-medium text-foreground">{title}</h3>
+      </CardHeader>
+      <CardContent>{children}</CardContent>
+    </Card>
   )
 }
 
@@ -69,7 +87,21 @@ export function ResultPreview({ isLoading, result }: ResultPreviewProps) {
     return <LoadingSkeleton />
   }
 
-  const { summary, parties, contract_type, key_clauses, risks, recommendations, overall_risk } = result
+  const {
+    summary,
+    parties,
+    contract_type,
+    key_clauses,
+    risks,
+    recommendations,
+    overall_risk,
+    term_and_termination,
+    financials,
+    obligations_of_signatory,
+    ambiguous_terms,
+    quick_checks,
+    analysis_warnings,
+  } = result
 
   return (
     <div className="flex flex-col gap-6">
@@ -85,117 +117,206 @@ export function ResultPreview({ isLoading, result }: ResultPreviewProps) {
         </div>
       </div>
 
+      {/* Avisos de extração */}
+      {analysis_warnings && analysis_warnings.length > 0 && (
+        <Card className="border-yellow-500/50 bg-yellow-500/5">
+          <CardContent className="flex flex-col gap-1 pt-4">
+            {analysis_warnings.map((w, i) => (
+              <p key={i} className="flex items-start gap-2 text-xs text-yellow-700 dark:text-yellow-400">
+                <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                {w}
+              </p>
+            ))}
+          </CardContent>
+        </Card>
+      )}
+
       {/* Resumo */}
-      <Card className="border-border bg-card">
-        <CardHeader className="flex flex-row items-center gap-3 pb-3">
-          <div className="flex h-8 w-8 items-center justify-center rounded-md bg-secondary">
-            <FileText className="h-4 w-4 text-muted-foreground" />
-          </div>
-          <h3 className="text-sm font-medium text-foreground">Resumo</h3>
-        </CardHeader>
-        <CardContent>
-          <p className="text-sm leading-relaxed text-muted-foreground">{summary}</p>
-        </CardContent>
-      </Card>
+      <SectionCard icon={<FileText className="h-4 w-4 text-muted-foreground" />} title="Resumo">
+        <p className="text-sm leading-relaxed text-muted-foreground">{summary}</p>
+      </SectionCard>
 
       {/* Partes + Tipo de Contrato */}
       <div className="grid gap-4 sm:grid-cols-2">
-        <Card className="border-border bg-card">
-          <CardHeader className="flex flex-row items-center gap-3 pb-3">
-            <div className="flex h-8 w-8 items-center justify-center rounded-md bg-secondary">
-              <Users className="h-4 w-4 text-muted-foreground" />
-            </div>
-            <h3 className="text-sm font-medium text-foreground">Partes</h3>
-          </CardHeader>
-          <CardContent>
-            <ul className="flex flex-col gap-1">
-              {parties.map((party, i) => (
-                <li key={i} className="text-sm text-muted-foreground">{party}</li>
-              ))}
-            </ul>
-          </CardContent>
-        </Card>
+        <SectionCard icon={<Users className="h-4 w-4 text-muted-foreground" />} title="Partes">
+          <ul className="flex flex-col gap-2">
+            {parties.map((party, i) => (
+              <li key={i} className="text-sm">
+                <span className="font-medium text-foreground">{party.name}</span>
+                <span className="ml-1 text-muted-foreground">— {party.role}</span>
+                {party.identifier && (
+                  <span className="block text-xs text-muted-foreground">{party.identifier}</span>
+                )}
+              </li>
+            ))}
+          </ul>
+        </SectionCard>
 
-        <Card className="border-border bg-card">
-          <CardHeader className="flex flex-row items-center gap-3 pb-3">
-            <div className="flex h-8 w-8 items-center justify-center rounded-md bg-secondary">
-              <Scale className="h-4 w-4 text-muted-foreground" />
-            </div>
-            <h3 className="text-sm font-medium text-foreground">Tipo de Contrato</h3>
-          </CardHeader>
-          <CardContent>
-            <p className="text-sm text-muted-foreground">{contract_type}</p>
-          </CardContent>
-        </Card>
+        <SectionCard icon={<Scale className="h-4 w-4 text-muted-foreground" />} title="Tipo de Contrato">
+          <p className="text-sm text-muted-foreground">{contract_type ?? "Não identificado"}</p>
+          {term_and_termination.effective_date && (
+            <p className="mt-2 text-xs text-muted-foreground">
+              <span className="font-medium">Vigência:</span> {term_and_termination.effective_date}
+              {term_and_termination.expiry_or_term && ` · ${term_and_termination.expiry_or_term}`}
+            </p>
+          )}
+          {term_and_termination.renewal && (
+            <p className="mt-1 text-xs text-muted-foreground">
+              <span className="font-medium">Renovação:</span> {term_and_termination.renewal}
+            </p>
+          )}
+        </SectionCard>
       </div>
 
+      {/* Financeiro */}
+      {(financials.payment_terms || financials.amounts.length > 0) && (
+        <SectionCard icon={<DollarSign className="h-4 w-4 text-muted-foreground" />} title="Financeiro">
+          {financials.payment_terms && (
+            <p className="text-sm text-muted-foreground">
+              <span className="font-medium text-foreground">Pagamento:</span> {financials.payment_terms}
+            </p>
+          )}
+          {financials.amounts.length > 0 && (
+            <ul className="mt-2 flex flex-col gap-1">
+              {financials.amounts.map((a, i) => (
+                <li key={i} className="text-sm text-muted-foreground">· {a}</li>
+              ))}
+            </ul>
+          )}
+          {financials.penalties_and_interest && (
+            <p className="mt-2 text-xs text-muted-foreground">
+              <span className="font-medium">Multas/Juros:</span> {financials.penalties_and_interest}
+            </p>
+          )}
+        </SectionCard>
+      )}
+
       {/* Cláusulas Críticas */}
-      <Card className="border-border bg-card">
-        <CardHeader className="flex flex-row items-center gap-3 pb-3">
-          <div className="flex h-8 w-8 items-center justify-center rounded-md bg-secondary">
-            <Scale className="h-4 w-4 text-muted-foreground" />
-          </div>
-          <h3 className="text-sm font-medium text-foreground">Cláusulas Críticas</h3>
-        </CardHeader>
-        <CardContent>
+      <SectionCard icon={<AlertTriangle className="h-4 w-4 text-muted-foreground" />} title="Cláusulas Críticas">
+        {key_clauses.length === 0 ? (
+          <p className="text-sm text-muted-foreground">Nenhuma cláusula identificada.</p>
+        ) : (
           <Accordion type="multiple" className="w-full">
             {key_clauses.map((clause, i) => (
               <AccordionItem key={i} value={`clause-${i}`}>
                 <AccordionTrigger>
-                  <div className="flex items-center gap-2">
-                    <span>{clause.clause}</span>
+                  <div className="flex items-center gap-2 text-left">
+                    <span>{clause.clause_name}</span>
                     <RiskBadge level={clause.risk_level} />
                   </div>
                 </AccordionTrigger>
-                <AccordionContent>
-                  <p className="text-muted-foreground">{clause.description}</p>
+                <AccordionContent className="flex flex-col gap-2">
+                  <p className="text-sm text-muted-foreground">{clause.clause_summary}</p>
+                  {clause.clause_text_snippet && (
+                    <blockquote className="border-l-2 border-border pl-3 text-xs italic text-muted-foreground">
+                      "{clause.clause_text_snippet}"
+                    </blockquote>
+                  )}
+                  {clause.risk_explanation && (
+                    <p className="text-xs text-muted-foreground">
+                      <span className="font-medium">Risco:</span> {clause.risk_explanation}
+                    </p>
+                  )}
+                  {clause.recommended_fix && (
+                    <p className="text-xs text-muted-foreground">
+                      <span className="font-medium">Sugestão:</span> {clause.recommended_fix}
+                    </p>
+                  )}
+                  {clause.clause_location && (
+                    <p className="text-xs text-muted-foreground opacity-60">{clause.clause_location}</p>
+                  )}
                 </AccordionContent>
               </AccordionItem>
             ))}
           </Accordion>
-        </CardContent>
-      </Card>
+        )}
+      </SectionCard>
 
       {/* Riscos + Recomendações */}
       <div className="grid gap-4 sm:grid-cols-2">
-        <Card className="border-border bg-card">
-          <CardHeader className="flex flex-row items-center gap-3 pb-3">
-            <div className="flex h-8 w-8 items-center justify-center rounded-md bg-secondary">
-              <ShieldAlert className="h-4 w-4 text-muted-foreground" />
-            </div>
-            <h3 className="text-sm font-medium text-foreground">Riscos Identificados</h3>
-          </CardHeader>
-          <CardContent>
-            <ul className="flex flex-col gap-2">
-              {risks.map((risk, i) => (
-                <li key={i} className="flex items-start gap-2 text-sm text-muted-foreground">
+        <SectionCard icon={<ShieldAlert className="h-4 w-4 text-muted-foreground" />} title="Riscos Identificados">
+          <ul className="flex flex-col gap-3">
+            {risks.map((risk, i) => (
+              <li key={i} className="flex flex-col gap-1 text-sm">
+                <div className="flex items-start gap-2">
                   <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-destructive" />
-                  {risk}
-                </li>
-              ))}
-            </ul>
-          </CardContent>
-        </Card>
+                  <span className="text-muted-foreground">{risk.risk}</span>
+                  <RiskBadge level={risk.impact} />
+                </div>
+                {risk.mitigation && (
+                  <p className="ml-5 text-xs text-muted-foreground opacity-75">{risk.mitigation}</p>
+                )}
+              </li>
+            ))}
+          </ul>
+        </SectionCard>
 
-        <Card className="border-border bg-card">
-          <CardHeader className="flex flex-row items-center gap-3 pb-3">
-            <div className="flex h-8 w-8 items-center justify-center rounded-md bg-secondary">
-              <Lightbulb className="h-4 w-4 text-muted-foreground" />
-            </div>
-            <h3 className="text-sm font-medium text-foreground">Recomendações</h3>
-          </CardHeader>
-          <CardContent>
-            <ul className="flex flex-col gap-2">
-              {recommendations.map((rec, i) => (
-                <li key={i} className="flex items-start gap-2 text-sm text-muted-foreground">
+        <SectionCard icon={<Lightbulb className="h-4 w-4 text-muted-foreground" />} title="Recomendações">
+          <ul className="flex flex-col gap-3">
+            {recommendations.map((rec, i) => (
+              <li key={i} className="flex flex-col gap-1 text-sm">
+                <div className="flex items-start gap-2">
                   <MessageSquareText className="mt-0.5 h-3.5 w-3.5 shrink-0 text-accent" />
-                  {rec}
-                </li>
-              ))}
-            </ul>
-          </CardContent>
-        </Card>
+                  <span className="text-muted-foreground">{rec.action}</span>
+                  <RiskBadge level={rec.priority} />
+                </div>
+                {rec.proposed_text && (
+                  <p className="ml-5 text-xs italic text-muted-foreground opacity-75">"{rec.proposed_text}"</p>
+                )}
+              </li>
+            ))}
+          </ul>
+        </SectionCard>
       </div>
+
+      {/* Obrigações */}
+      {obligations_of_signatory.length > 0 && (
+        <SectionCard icon={<Clock className="h-4 w-4 text-muted-foreground" />} title="Obrigações do Contratante">
+          <ul className="flex flex-col gap-2">
+            {obligations_of_signatory.map((ob, i) => (
+              <li key={i} className="text-sm">
+                <span className="text-foreground">{ob.obligation}</span>
+                {ob.deadline_or_frequency && (
+                  <span className="ml-1 text-xs text-muted-foreground">· {ob.deadline_or_frequency}</span>
+                )}
+              </li>
+            ))}
+          </ul>
+        </SectionCard>
+      )}
+
+      {/* Termos ambíguos */}
+      {ambiguous_terms.length > 0 && (
+        <SectionCard icon={<AlertCircle className="h-4 w-4 text-muted-foreground" />} title="Termos Ambíguos">
+          <ul className="flex flex-col gap-3">
+            {ambiguous_terms.map((t, i) => (
+              <li key={i} className="text-sm">
+                <span className="font-medium text-foreground">"{t.term}"</span>
+                <p className="mt-0.5 text-xs text-muted-foreground">{t.why_problematic}</p>
+                {t.suggested_clarification && (
+                  <p className="mt-0.5 text-xs text-muted-foreground opacity-75">
+                    <span className="font-medium">Sugestão:</span> {t.suggested_clarification}
+                  </p>
+                )}
+              </li>
+            ))}
+          </ul>
+        </SectionCard>
+      )}
+
+      {/* Quick Checks */}
+      {quick_checks.length > 0 && (
+        <SectionCard icon={<CheckSquare className="h-4 w-4 text-muted-foreground" />} title="Checklist antes de assinar">
+          <ul className="flex flex-col gap-2">
+            {quick_checks.map((check, i) => (
+              <li key={i} className="flex items-start gap-2 text-sm text-muted-foreground">
+                <CheckSquare className="mt-0.5 h-3.5 w-3.5 shrink-0 text-accent" />
+                {check}
+              </li>
+            ))}
+          </ul>
+        </SectionCard>
+      )}
     </div>
   )
 }
